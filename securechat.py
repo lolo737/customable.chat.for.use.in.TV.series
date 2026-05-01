@@ -7,7 +7,8 @@ Features:
   - Scheduled messages  (send at DD/MM/YYYY HH:MM)
   - Annual recurring messages (fires every year on same date)
   - Self-destruct messages (auto-deleted 5s after recipient reads)
-  - Customisable appearance (fonts, colours, background image)
+  - 3 built-in themes: Dark Teal / Amber Terminal / Clean Light
+  - Fully customisable appearance (fonts, colours, background image)
   - Local SQLite chat log
 
 Run as server: python securechat.py --server
@@ -46,26 +47,98 @@ except ImportError:
 # CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-APP_DIR     = Path.home() / ".securechat"
+APP_DIR      = Path.home() / ".securechat"
 APP_DIR.mkdir(exist_ok=True)
-KEYS_FILE   = APP_DIR / "keypair.json"
-DB_FILE     = APP_DIR / "messages.db"
-THEME_FILE  = APP_DIR / "theme.json"
-PEERS_FILE  = APP_DIR / "peers.json"
+KEYS_FILE    = APP_DIR / "keypair.json"
+DB_FILE      = APP_DIR / "messages.db"
+THEME_FILE   = APP_DIR / "theme.json"
+PEERS_FILE   = APP_DIR / "peers.json"
 DEFAULT_PORT = 8765
 
-DEFAULT_THEME = {
-    "bg_color":      "#0d0d0d",
-    "chat_bg":       "#111111",
-    "bubble_mine":   "#1a1a2e",
-    "bubble_theirs": "#16213e",
-    "text_color":    "#e0e0e0",
-    "accent_color":  "#00d4aa",
-    "font_family":   "Courier New",
-    "font_size":     12,
-    "bg_image":      "",
-    "username":      "Anonymous",
+# ── THEME PRESETS ─────────────────────────────────────────────────────────────
+
+THEMES = {
+
+    "Dark Teal": {
+        "bg_color":        "#0a0a0a",
+        "chat_bg":         "#0f0f0f",
+        "sidebar_bg":      "#0d0d0d",
+        "bubble_mine":     "#101c30",
+        "bubble_theirs":   "#0d2420",
+        "border_mine":     "#1a2e4a",
+        "border_theirs":   "#0f3828",
+        "text_mine":       "#a0c8e8",   # brighter outgoing text
+        "text_theirs":     "#a8d8c8",
+        "sender_mine":     "#4a80b0",
+        "sender_theirs":   "#00d4aa",
+        "text_color":      "#c8c8c8",
+        "accent_color":    "#00d4aa",
+        "font_family":     "Courier New",
+        "font_size":       12,
+        "bg_image":        "",
+        "username":        "Anonymous",
+        "send_label":      "TRANSMIT",
+        "radius_mine":     "14px 14px 3px 14px",
+        "radius_theirs":   "14px 14px 14px 3px",
+        "border_width":    "1px",
+        "sd_border":       "#cc2222",
+        "sd_bg":           "#1a0d0d",
+    },
+
+    "Amber Terminal": {
+        "bg_color":        "#050500",
+        "chat_bg":         "#060600",
+        "sidebar_bg":      "#070700",
+        "bubble_mine":     "#0a0900",
+        "bubble_theirs":   "#0c0a00",
+        "border_mine":     "#5a4000",
+        "border_theirs":   "#c8900a",
+        "text_mine":       "#c8a040",   # bright amber outgoing
+        "text_theirs":     "#a07820",
+        "sender_mine":     "#5a4000",
+        "sender_theirs":   "#c8900a",
+        "text_color":      "#7a6010",
+        "accent_color":    "#c8900a",
+        "font_family":     "Courier New",
+        "font_size":       12,
+        "bg_image":        "",
+        "username":        "Anonymous",
+        "send_label":      "TRANSMIT",
+        "radius_mine":     "16px 16px 3px 16px",
+        "radius_theirs":   "16px 16px 16px 3px",
+        "border_width":    "2px",
+        "sd_border":       "#8b0000",
+        "sd_bg":           "#100000",
+    },
+
+    "Clean Light": {
+        "bg_color":        "#f4f4f4",
+        "chat_bg":         "#ffffff",
+        "sidebar_bg":      "#f4f4f4",
+        "bubble_mine":     "#1a1a1a",
+        "bubble_theirs":   "#f0f0f0",
+        "border_mine":     "#111111",
+        "border_theirs":   "#e4e4e4",
+        "text_mine":       "#ffffff",   # white on dark — max brightness
+        "text_theirs":     "#333333",
+        "sender_mine":     "#4caf90",
+        "sender_theirs":   "#4caf90",
+        "text_color":      "#1a1a1a",
+        "accent_color":    "#1a1a1a",
+        "font_family":     "Helvetica Neue",
+        "font_size":       12,
+        "bg_image":        "",
+        "username":        "Anonymous",
+        "send_label":      "Send",
+        "radius_mine":     "14px 14px 3px 14px",
+        "radius_theirs":   "14px 14px 14px 3px",
+        "border_width":    "1px",
+        "sd_border":       "#cc0000",
+        "sd_bg":           "#fff0f0",
+    },
 }
+
+DEFAULT_THEME = THEMES["Dark Teal"].copy()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -87,11 +160,11 @@ def load_or_create_keypair():
 def pub64(pk):
     return base64.b64encode(bytes(pk.public_key)).decode()
 
-def encrypt(msg: str, my_key, their_pub64: str) -> str:
+def encrypt(msg, my_key, their_pub64):
     box = nacl.public.Box(my_key, nacl.public.PublicKey(base64.b64decode(their_pub64)))
     return base64.b64encode(box.encrypt(msg.encode())).decode()
 
-def decrypt(enc64: str, my_key, their_pub64: str) -> str:
+def decrypt(enc64, my_key, their_pub64):
     box = nacl.public.Box(my_key, nacl.public.PublicKey(base64.b64decode(their_pub64)))
     return box.decrypt(base64.b64decode(enc64)).decode()
 
@@ -110,8 +183,8 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS scheduled (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         peer TEXT, content TEXT,
-        send_at TEXT,                -- YYYY-MM-DD HH:MM:SS
-        recurring INTEGER DEFAULT 0, -- 1 = repeat every year
+        send_at TEXT,
+        recurring INTEGER DEFAULT 0,
         self_destruct INTEGER DEFAULT 0,
         sent INTEGER DEFAULT 0,
         note TEXT
@@ -154,7 +227,6 @@ def clear_history(peer=None):
     else:    c.execute("DELETE FROM messages")
     c.commit(); c.close()
 
-# scheduled ──
 def save_scheduled(peer, content, dt, recurring, sd, note=""):
     c = sqlite3.connect(DB_FILE)
     c.execute("INSERT INTO scheduled (peer,content,send_at,recurring,self_destruct,sent,note) VALUES (?,?,?,?,?,0,?)",
@@ -201,15 +273,20 @@ def delete_scheduled(sid):
 
 def load_theme():
     if THEME_FILE.exists():
-        t = DEFAULT_THEME.copy(); t.update(json.loads(THEME_FILE.read_text())); return t
+        saved = json.loads(THEME_FILE.read_text())
+        t = DEFAULT_THEME.copy()
+        t.update(saved)
+        return t
     return DEFAULT_THEME.copy()
 
-def save_theme(t): THEME_FILE.write_text(json.dumps(t, indent=2))
+def save_theme(t):
+    THEME_FILE.write_text(json.dumps(t, indent=2))
 
 def load_peers():
     return json.loads(PEERS_FILE.read_text()) if PEERS_FILE.exists() else {}
 
-def save_peers(p): PEERS_FILE.write_text(json.dumps(p, indent=2))
+def save_peers(p):
+    PEERS_FILE.write_text(json.dumps(p, indent=2))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -217,7 +294,7 @@ def save_peers(p): PEERS_FILE.write_text(json.dumps(p, indent=2))
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ServerThread(QThread):
-    msg_received      = pyqtSignal(str, str, str)   # pub, name, payload
+    msg_received      = pyqtSignal(str, str, str)
     peer_connected    = pyqtSignal(str)
     peer_disconnected = pyqtSignal(str)
 
@@ -256,7 +333,7 @@ class ServerThread(QThread):
             self.connections.pop(ws, None)
             if sname: self.peer_disconnected.emit(sname)
 
-    def send_all(self, payload: str):
+    def send_all(self, payload):
         if self.loop:
             asyncio.run_coroutine_threadsafe(self._bcast(payload), self.loop)
 
@@ -274,7 +351,7 @@ class ServerThread(QThread):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ClientThread(QThread):
-    msg_received      = pyqtSignal(str, str)   # pub, payload
+    msg_received      = pyqtSignal(str, str)
     connected         = pyqtSignal(str)
     disconnected      = pyqtSignal()
     connection_failed = pyqtSignal(str)
@@ -338,28 +415,22 @@ class ScheduleDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Schedule a Message")
         self.setMinimumWidth(480)
-        self.peers = peers
-        layout = QFormLayout(self)
-        layout.setSpacing(14)
+        layout = QFormLayout(self); layout.setSpacing(14)
 
-        # Recipient
         self.peer_combo = QComboBox()
         self.peer_combo.addItems(list(peers.keys()))
         self.peer_combo.addItem("Everyone (broadcast)")
         layout.addRow("To:", self.peer_combo)
 
-        # Message
         self.msg_edit = QTextEdit()
         self.msg_edit.setPlaceholderText("Your message…")
         self.msg_edit.setFixedHeight(100)
         layout.addRow("Message:", self.msg_edit)
 
-        # Label
         self.note_edit = QLineEdit()
         self.note_edit.setPlaceholderText("e.g. Happy birthday! (optional)")
         layout.addRow("Label:", self.note_edit)
 
-        # Date/time  DD/MM/YYYY
         self.dt_pick = QDateTimeEdit()
         self.dt_pick.setDisplayFormat("dd/MM/yyyy   HH:mm")
         self.dt_pick.setDateTime(QDateTime.currentDateTime().addSecs(3600))
@@ -367,17 +438,14 @@ class ScheduleDialog(QDialog):
         self.dt_pick.setMinimumDateTime(QDateTime.currentDateTime())
         layout.addRow("Send at:", self.dt_pick)
 
-        # Recurring
         self.recur_chk = QCheckBox("Repeat every year on this date  📅")
         layout.addRow("", self.recur_chk)
 
-        # Self-destruct
         self.sd_chk = QCheckBox("Self-destruct after recipient reads it  💥")
         layout.addRow("", self.sd_chk)
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btns.accepted.connect(self._ok)
-        btns.rejected.connect(self.reject)
+        btns.accepted.connect(self._ok); btns.rejected.connect(self.reject)
         layout.addRow(btns)
 
     def _ok(self):
@@ -392,10 +460,10 @@ class ScheduleDialog(QDialog):
             qdt.time().hour(), qdt.time().minute()
         )
         return {
-            "peer":    self.peer_combo.currentText(),
-            "content": self.msg_edit.toPlainText().strip(),
-            "note":    self.note_edit.text().strip(),
-            "send_at": py_dt,
+            "peer":          self.peer_combo.currentText(),
+            "content":       self.msg_edit.toPlainText().strip(),
+            "note":          self.note_edit.text().strip(),
+            "send_at":       py_dt,
             "recurring":     self.recur_chk.isChecked(),
             "self_destruct": self.sd_chk.isChecked(),
         }
@@ -422,10 +490,8 @@ class ScheduleManager(QDialog):
         layout.addWidget(self.table)
 
         row_btns = QHBoxLayout()
-        del_btn = QPushButton("🗑  Delete Selected")
-        del_btn.clicked.connect(self._delete)
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
+        del_btn   = QPushButton("🗑  Delete Selected"); del_btn.clicked.connect(self._delete)
+        close_btn = QPushButton("Close");              close_btn.clicked.connect(self.accept)
         row_btns.addWidget(del_btn); row_btns.addStretch(); row_btns.addWidget(close_btn)
         layout.addLayout(row_btns)
         self._load()
@@ -458,7 +524,7 @@ class ScheduleManager(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CHAT BUBBLE
+# CHAT BUBBLE  — theme-aware, directional corners, per-side colours
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Bubble(QFrame):
@@ -467,35 +533,61 @@ class Bubble(QFrame):
         super().__init__()
         self.msg_id = msg_id
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6); layout.setSpacing(2)
+        layout.setContentsMargins(11, 7, 11, 7)
+        layout.setSpacing(3)
 
+        # Sender label — different colour per side
         lbl_name = QLabel(sender)
-        lbl_name.setStyleSheet(f"color:{theme['accent_color']};font-size:10px;font-weight:bold;")
+        sender_color = theme.get("sender_mine" if is_mine else "sender_theirs",
+                                 theme["accent_color"])
+        lbl_name.setStyleSheet(
+            f"color:{sender_color};font-size:10px;font-weight:bold;letter-spacing:1px;")
+        if is_mine:
+            lbl_name.setAlignment(Qt.AlignRight)
 
+        # Message text — brighter on outgoing
         lbl_msg = QLabel(text)
         lbl_msg.setWordWrap(True)
+        msg_color = theme.get("text_mine" if is_mine else "text_theirs",
+                              theme["text_color"])
         lbl_msg.setStyleSheet(
-            f"color:{theme['text_color']};font-family:{theme['font_family']};font-size:{theme['font_size']}px;")
+            f"color:{msg_color};"
+            f"font-family:{theme['font_family']};"
+            f"font-size:{theme['font_size']}px;")
 
+        # Timestamp
         footer = ts + ("  ·  💥 self-destruct" if sd else "")
         lbl_ts = QLabel(footer)
-        lbl_ts.setStyleSheet("color:#555;font-size:9px;")
+        ts_color = theme.get("sd_border", "#cc2222") if sd else "#444444"
+        lbl_ts.setStyleSheet(f"color:{ts_color};font-size:9px;")
         lbl_ts.setAlignment(Qt.AlignRight)
 
-        layout.addWidget(lbl_name); layout.addWidget(lbl_msg); layout.addWidget(lbl_ts)
+        layout.addWidget(lbl_name)
+        layout.addWidget(lbl_msg)
+        layout.addWidget(lbl_ts)
 
-        bg     = theme["bubble_mine"] if is_mine else theme["bubble_theirs"]
-        border = "#cc2222" if sd else "#222233"
-        self.setStyleSheet(f"QFrame{{background:{bg};border-radius:10px;border:1px solid {border};}}")
-        self.setMaximumWidth(540)
+        # Bubble background + border
+        if sd:
+            bg     = theme.get("sd_bg", "#1a0d0d")
+            border = theme.get("sd_border", "#cc2222")
+        else:
+            bg     = theme["bubble_mine"]     if is_mine else theme["bubble_theirs"]
+            border = theme.get("border_mine"  if is_mine else "border_theirs", "#222233")
 
-        # Trigger destruct 5 s after display (incoming only)
+        radius = theme.get("radius_mine" if is_mine else "radius_theirs", "10px")
+        bw     = theme.get("border_width", "1px")
+
+        self.setStyleSheet(
+            f"QFrame{{background:{bg};border-radius:{radius};"
+            f"border:{bw} solid {border};}}")
+        self.setMaximumWidth(520)
+
         if sd and not is_mine and msg_id and on_destruct:
             QTimer.singleShot(5000, lambda: on_destruct(msg_id))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SCHEDULER CHECKER  (QTimer, every 30 s)
+# SCHEDULER CHECKER
 # ─────────────────────────────────────────────────────────────────────────────
 
 class SchedulerChecker:
@@ -522,8 +614,9 @@ class SecureChatWindow(QMainWindow):
         self.pk   = pk; self.mode = mode
         self.host = host; self.port = port
         self.theme = load_theme(); self.peers = load_peers()
-        self.active_peer = None
-        self.server_thread = None; self.client_thread = None
+        self.active_peer   = None
+        self.server_thread = None
+        self.client_thread = None
 
         init_db(); self._ui(); self._style()
 
@@ -535,7 +628,8 @@ class SecureChatWindow(QMainWindow):
     # ── BUILD UI ──────────────────────────────────────────────────────────────
 
     def _ui(self):
-        self.setWindowTitle("SecureChat"); self.setMinimumSize(860, 620); self.resize(1080, 740)
+        self.setWindowTitle("SecureChat")
+        self.setMinimumSize(860, 620); self.resize(1080, 740)
         central = QWidget(); self.setCentralWidget(central)
         root = QHBoxLayout(central); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
 
@@ -543,24 +637,23 @@ class SecureChatWindow(QMainWindow):
         sb = QWidget(); sb.setFixedWidth(236)
         sl = QVBoxLayout(sb); sl.setContentsMargins(12,14,12,12); sl.setSpacing(7)
 
-        title = QLabel("🔒  SECURECHAT"); title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-size:14px;font-weight:bold;letter-spacing:2px;padding:8px 0;")
+        title = QLabel("SECURECHAT"); title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size:13px;font-weight:bold;letter-spacing:3px;padding:8px 0;")
         sl.addWidget(title)
 
         mode_lbl = QLabel(f"{'SERVER' if self.mode=='server' else 'CLIENT'}  MODE")
         mode_lbl.setAlignment(Qt.AlignCenter)
-        mode_lbl.setStyleSheet("font-size:10px;color:#888;letter-spacing:1px;")
+        mode_lbl.setStyleSheet("font-size:9px;letter-spacing:2px;")
         sl.addWidget(mode_lbl)
 
         short_key = pub64(self.pk)[:14] + "…"
         sl.addWidget(QLabel(f"Key: {short_key}", alignment=Qt.AlignCenter,
-                            styleSheet="font-size:9px;color:#444;"))
+                            styleSheet="font-size:9px;opacity:0.4;"))
 
         copy_btn = QPushButton("Copy My Public Key"); copy_btn.clicked.connect(self._copy_pub)
         sl.addWidget(copy_btn)
 
-        sep1 = QLabel("PEERS", styleSheet="font-size:10px;font-weight:bold;letter-spacing:2px;color:#777;margin-top:6px;")
-        sl.addWidget(sep1)
+        sl.addWidget(QLabel("PEERS", styleSheet="font-size:9px;font-weight:bold;letter-spacing:2px;margin-top:8px;"))
         self.peers_list = QListWidget(); self.peers_list.itemClicked.connect(self._select_peer)
         sl.addWidget(self.peers_list)
         add_p = QPushButton("+ Add Peer Key"); add_p.clicked.connect(self._add_peer)
@@ -568,12 +661,11 @@ class SecureChatWindow(QMainWindow):
 
         self.status_lbl = QLabel("Waiting for connection…")
         self.status_lbl.setAlignment(Qt.AlignCenter); self.status_lbl.setWordWrap(True)
-        self.status_lbl.setStyleSheet("font-size:10px;color:#00d4aa;margin-top:6px;")
+        self.status_lbl.setStyleSheet("font-size:10px;margin-top:6px;")
         sl.addWidget(self.status_lbl)
         sl.addStretch()
 
-        sep2 = QLabel("SCHEDULED", styleSheet="font-size:10px;font-weight:bold;letter-spacing:2px;color:#777;")
-        sl.addWidget(sep2)
+        sl.addWidget(QLabel("SCHEDULED", styleSheet="font-size:9px;font-weight:bold;letter-spacing:2px;"))
         sched_btn = QPushButton("⏰  Schedule a Message"); sched_btn.clicked.connect(self._new_schedule)
         sl.addWidget(sched_btn)
         view_btn = QPushButton("📋  View Scheduled"); view_btn.clicked.connect(self._view_schedules)
@@ -591,25 +683,27 @@ class SecureChatWindow(QMainWindow):
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.msgs_w = QWidget()
         self.msgs_l = QVBoxLayout(self.msgs_w)
-        self.msgs_l.setAlignment(Qt.AlignTop); self.msgs_l.setSpacing(8)
+        self.msgs_l.setAlignment(Qt.AlignTop); self.msgs_l.setSpacing(10)
         self.msgs_l.setContentsMargins(18,18,18,18)
         self.scroll.setWidget(self.msgs_w)
 
         inp_row = QHBoxLayout(); inp_row.setContentsMargins(10,10,10,10); inp_row.setSpacing(6)
         self.sd_chk = QCheckBox("💥"); self.sd_chk.setToolTip("Self-destruct")
         self.sd_chk.setStyleSheet("font-size:16px;color:#ff6666;")
-        self.inp = QLineEdit(); self.inp.setPlaceholderText("Message… (Enter to send)")
+        self.inp = QLineEdit()
+        self.inp.setPlaceholderText(f"Message… (Enter to {self.theme.get('send_label','Send').lower()})")
         self.inp.returnPressed.connect(self._send); self.inp.setMinimumHeight(42)
-        send_btn = QPushButton("Send"); send_btn.setMinimumHeight(42); send_btn.setMinimumWidth(72)
-        send_btn.clicked.connect(self._send)
-        inp_row.addWidget(self.sd_chk); inp_row.addWidget(self.inp, 1); inp_row.addWidget(send_btn)
+        self.send_btn = QPushButton(self.theme.get("send_label", "Send"))
+        self.send_btn.setMinimumHeight(42); self.send_btn.setMinimumWidth(90)
+        self.send_btn.clicked.connect(self._send)
+        inp_row.addWidget(self.sd_chk); inp_row.addWidget(self.inp, 1); inp_row.addWidget(self.send_btn)
         inp_w = QWidget(); inp_w.setLayout(inp_row)
 
         cl.addWidget(self.scroll); cl.addWidget(inp_w)
         root.addWidget(sb); root.addWidget(chat, 1)
         self._refresh_peers()
 
-    # ── STYLE ────────────────────────────────────────────────────────────────
+    # ── STYLE ─────────────────────────────────────────────────────────────────
 
     def _style(self):
         t = self.theme
@@ -617,68 +711,146 @@ class SecureChatWindow(QMainWindow):
         if t.get("bg_image") and Path(t["bg_image"]).exists():
             safe = t["bg_image"].replace("\\", "/")
             bg_img = f"background-image:url('{safe}');background-size:cover;"
+
+        sidebar_bg = t.get("sidebar_bg", t["bg_color"])
+        accent     = t["accent_color"]
+        hover      = self._lighten(accent)
+
         self.setStyleSheet(f"""
-            QMainWindow,QWidget{{background:{t['bg_color']};color:{t['text_color']};
-              font-family:{t['font_family']};font-size:{t['font_size']}px;}}
+            QMainWindow,QWidget{{
+                background:{t['bg_color']};color:{t['text_color']};
+                font-family:{t['font_family']};font-size:{t['font_size']}px;}}
             QScrollArea{{background:{t['chat_bg']};{bg_img}border:none;}}
-            QLineEdit{{background:#1a1a1a;color:{t['text_color']};border:1px solid #333;
-              border-radius:6px;padding:6px 10px;font-family:{t['font_family']};font-size:{t['font_size']}px;}}
-            QPushButton{{background:{t['accent_color']};color:#000;border:none;border-radius:6px;
-              padding:6px 12px;font-weight:bold;}}
-            QPushButton:hover{{background:#00ffcc;}}
-            QListWidget{{background:#111;border:1px solid #222;border-radius:4px;color:{t['text_color']};}}
-            QListWidget::item:selected{{background:{t['accent_color']};color:#000;}}
-            QScrollBar:vertical{{background:#0d0d0d;width:6px;}}
-            QScrollBar::handle:vertical{{background:#333;border-radius:3px;}}
+            QLineEdit{{background:{sidebar_bg};color:{t['text_color']};
+                border:1px solid {t.get('border_mine','#333')};
+                border-radius:6px;padding:6px 10px;
+                font-family:{t['font_family']};font-size:{t['font_size']}px;}}
+            QPushButton{{background:{accent};color:#000;border:none;
+                border-radius:6px;padding:6px 12px;font-weight:bold;letter-spacing:1px;}}
+            QPushButton:hover{{background:{hover};}}
+            QListWidget{{background:{sidebar_bg};border:1px solid {t.get('border_theirs','#222')};
+                border-radius:4px;color:{t['text_color']};}}
+            QListWidget::item:selected{{background:{accent};color:#000;}}
+            QScrollBar:vertical{{background:{t['bg_color']};width:6px;}}
+            QScrollBar::handle:vertical{{background:{t.get('border_mine','#333')};border-radius:3px;}}
             QCheckBox{{color:{t['text_color']};}}
-            QDateTimeEdit,QComboBox,QTextEdit{{background:#1a1a1a;color:{t['text_color']};
-              border:1px solid #333;border-radius:4px;padding:4px 8px;}}
-            QTableWidget{{background:#111;color:{t['text_color']};border:none;gridline-color:#222;}}
-            QHeaderView::section{{background:#1a1a1a;color:{t['accent_color']};padding:4px;border:none;}}
+            QDateTimeEdit,QComboBox,QTextEdit{{
+                background:{sidebar_bg};color:{t['text_color']};
+                border:1px solid {t.get('border_theirs','#333')};
+                border-radius:4px;padding:4px 8px;}}
+            QTableWidget{{background:{sidebar_bg};color:{t['text_color']};
+                border:none;gridline-color:{t.get('border_mine','#222')};}}
+            QHeaderView::section{{background:{t['bg_color']};
+                color:{accent};padding:4px;border:none;}}
         """)
 
+        # update send button label when theme changes
+        if hasattr(self, 'send_btn'):
+            self.send_btn.setText(t.get("send_label", "Send"))
+        if hasattr(self, 'status_lbl'):
+            self.status_lbl.setStyleSheet(f"font-size:10px;color:{accent};margin-top:6px;")
+
+    @staticmethod
+    def _lighten(hex_color):
+        """Return a slightly lighter version of a hex colour for hover states."""
+        try:
+            h = hex_color.lstrip("#")
+            r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
+            r = min(255, r + 40); g = min(255, g + 40); b = min(255, b + 40)
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:
+            return hex_color
+
+    # ── APPEARANCE DIALOG ─────────────────────────────────────────────────────
+
     def _appearance(self):
-        dlg = QDialog(self); dlg.setWindowTitle("Appearance"); dlg.setMinimumWidth(430)
+        dlg = QDialog(self); dlg.setWindowTitle("Appearance"); dlg.setMinimumWidth(460)
         f = QFormLayout(dlg); f.setSpacing(12)
 
+        # ── Preset picker ──
+        preset_combo = QComboBox()
+        preset_combo.addItems(list(THEMES.keys()))
+        current_name = next(
+            (k for k, v in THEMES.items() if v["bg_color"] == self.theme.get("bg_color")),
+            "Dark Teal"
+        )
+        preset_combo.setCurrentText(current_name)
+
+        def apply_preset(name):
+            self.theme.update(THEMES[name])
+            save_theme(self.theme)
+            self._style()
+            dlg.accept()
+
+        preset_btn = QPushButton("Apply Preset")
+        preset_btn.clicked.connect(lambda: apply_preset(preset_combo.currentText()))
+        preset_row = QHBoxLayout()
+        preset_row.addWidget(preset_combo, 1); preset_row.addWidget(preset_btn)
+        preset_w = QWidget(); preset_w.setLayout(preset_row)
+        f.addRow("Theme preset:", preset_w)
+
+        sep = QLabel("─── or customise manually ───")
+        sep.setStyleSheet("color:#555;font-size:10px;")
+        sep.setAlignment(Qt.AlignCenter)
+        f.addRow(sep)
+
+        # ── Colour pickers ──
         def pick_color(key, lbl):
-            c = QColorDialog.getColor(QColor(self.theme[key]), self)
+            c = QColorDialog.getColor(QColor(self.theme.get(key, "#000000")), self)
             if c.isValid():
                 self.theme[key] = c.name()
-                lbl.setText(c.name()); lbl.setStyleSheet(f"background:{c.name()};padding:4px;color:#fff;")
+                lbl.setText(c.name())
+                lbl.setStyleSheet(f"background:{c.name()};padding:4px;color:#fff;")
 
-        for key, label in [("bg_color","Background"),("chat_bg","Chat BG"),
-                            ("accent_color","Accent"),("text_color","Text"),
-                            ("bubble_mine","My Bubbles"),("bubble_theirs","Their Bubbles")]:
-            l = QLabel(self.theme[key]); l.setStyleSheet(f"background:{self.theme[key]};padding:4px;color:#fff;")
-            l.setCursor(Qt.PointingHandCursor)
-            l.mousePressEvent = lambda e, k=key, lb=l: pick_color(k, lb)
-            f.addRow(label, l)
+        color_fields = [
+            ("bg_color",      "Background"),
+            ("chat_bg",       "Chat BG"),
+            ("accent_color",  "Accent / Buttons"),
+            ("bubble_mine",   "My bubble BG"),
+            ("bubble_theirs", "Their bubble BG"),
+            ("text_mine",     "My message text"),
+            ("text_theirs",   "Their message text"),
+        ]
+        for key, label in color_fields:
+            val = self.theme.get(key, "#000000")
+            lbl = QLabel(val)
+            lbl.setStyleSheet(f"background:{val};padding:4px;color:#fff;")
+            lbl.setCursor(Qt.PointingHandCursor)
+            lbl.mousePressEvent = lambda e, k=key, lb=lbl: pick_color(k, lb)
+            f.addRow(label, lbl)
 
+        # ── Font ──
         font_btn = QPushButton(f"{self.theme['font_family']} {self.theme['font_size']}pt")
         def pick_font():
-            ft, ok = QFontDialog.getFont(QFont(self.theme['font_family'], self.theme['font_size']), self)
+            ft, ok = QFontDialog.getFont(
+                QFont(self.theme['font_family'], self.theme['font_size']), self)
             if ok:
-                self.theme['font_family'] = ft.family(); self.theme['font_size'] = ft.pointSize()
+                self.theme['font_family'] = ft.family()
+                self.theme['font_size']   = ft.pointSize()
                 font_btn.setText(f"{ft.family()} {ft.pointSize()}pt")
         font_btn.clicked.connect(pick_font); f.addRow("Font", font_btn)
 
+        # ── Background image ──
         img_btn = QPushButton("Choose Background Image")
         def pick_img():
-            p, _ = QFileDialog.getOpenFileName(self, "Image", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+            p, _ = QFileDialog.getOpenFileName(
+                self, "Image", "", "Images (*.png *.jpg *.jpeg *.bmp)")
             if p: self.theme["bg_image"] = p; img_btn.setText(Path(p).name)
         img_btn.clicked.connect(pick_img); f.addRow("BG Image", img_btn)
 
-        uname = QLineEdit(self.theme.get("username", "Anonymous")); f.addRow("Your Name", uname)
+        # ── Username ──
+        uname = QLineEdit(self.theme.get("username", "Anonymous"))
+        f.addRow("Your Name", uname)
 
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject); f.addRow(btns)
+        btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
+        f.addRow(btns)
 
         if dlg.exec_():
             self.theme["username"] = uname.text()
             save_theme(self.theme); self._style()
 
-    # ── PEERS ────────────────────────────────────────────────────────────────
+    # ── PEERS ─────────────────────────────────────────────────────────────────
 
     def _add_peer(self):
         name, ok = QInputDialog.getText(self, "Add Peer", "Peer name:")
@@ -699,7 +871,7 @@ class SecureChatWindow(QMainWindow):
         self.status_lbl.setText("Public key copied!")
         QTimer.singleShot(2000, lambda: self.status_lbl.setText("Ready"))
 
-    # ── SCHEDULING ───────────────────────────────────────────────────────────
+    # ── SCHEDULING ────────────────────────────────────────────────────────────
 
     def _new_schedule(self):
         if not self.peers:
@@ -717,7 +889,7 @@ class SecureChatWindow(QMainWindow):
     def _view_schedules(self):
         ScheduleManager(self).exec_()
 
-    # ── MESSAGING ────────────────────────────────────────────────────────────
+    # ── MESSAGING ─────────────────────────────────────────────────────────────
 
     def _send(self):
         text = self.inp.text().strip()
@@ -727,9 +899,9 @@ class SecureChatWindow(QMainWindow):
         self.inp.clear(); self.sd_chk.setChecked(False)
 
     def _dispatch(self, text, peer=None, sd=False, outgoing=True):
-        payload = json.dumps({"text": text, "sd": sd})
+        payload  = json.dumps({"text": text, "sd": sd})
         username = self.theme.get("username", "Me")
-        ts = datetime.datetime.now().strftime("%H:%M")
+        ts       = datetime.datetime.now().strftime("%H:%M")
 
         if outgoing:
             if self.mode == "server" and self.server_thread:
@@ -741,13 +913,13 @@ class SecureChatWindow(QMainWindow):
 
     def _on_server_msg(self, spub, sname, payload_raw):
         text, sd = self._parse(payload_raw)
-        ts = datetime.datetime.now().strftime("%H:%M")
+        ts  = datetime.datetime.now().strftime("%H:%M")
         mid = save_msg_get_id(sname, "in", text, sd)
         self._bubble(text, sname, ts, is_mine=False, sd=sd, msg_id=mid)
 
     def _on_client_msg(self, spub, payload_raw):
         text, sd = self._parse(payload_raw)
-        ts = datetime.datetime.now().strftime("%H:%M")
+        ts  = datetime.datetime.now().strftime("%H:%M")
         mid = save_msg_get_id(self.host or "Server", "in", text, sd)
         self._bubble(text, "Server", ts, is_mine=False, sd=sd, msg_id=mid)
 
@@ -762,9 +934,23 @@ class SecureChatWindow(QMainWindow):
         b = Bubble(text, sender, ts, is_mine, self.theme,
                    sd=sd, msg_id=msg_id,
                    on_destruct=destruct_msg if sd else None)
-        row = QHBoxLayout()
-        if is_mine: row.addStretch(); row.addWidget(b)
-        else:       row.addWidget(b); row.addStretch()
+        row = QHBoxLayout(); row.setContentsMargins(0,0,0,0); row.setSpacing(8)
+        # avatar dot
+        av = QLabel(sender[0].upper() if sender else "?")
+        av.setFixedSize(26, 26)
+        av.setAlignment(Qt.AlignCenter)
+        av_bg = self.theme.get("border_mine" if is_mine else "border_theirs", "#333")
+        av_fg = self.theme.get("sender_mine" if is_mine else "sender_theirs",
+                               self.theme["accent_color"])
+        av.setStyleSheet(
+            f"background:{av_bg};color:{av_fg};border-radius:13px;"
+            f"font-size:10px;font-weight:bold;")
+
+        if is_mine:
+            row.addStretch(); row.addWidget(b); row.addWidget(av)
+        else:
+            row.addWidget(av); row.addWidget(b); row.addStretch()
+
         w = QWidget(); w.setLayout(row)
         self.msgs_l.addWidget(w)
         QTimer.singleShot(50, lambda: self.scroll.verticalScrollBar().setValue(
@@ -774,7 +960,7 @@ class SecureChatWindow(QMainWindow):
         while self.msgs_l.count():
             item = self.msgs_l.takeAt(0)
             if item.widget(): item.widget().deleteLater()
-        peer = self.active_peer or self.host or "__broadcast__"
+        peer     = self.active_peer or self.host or "__broadcast__"
         username = self.theme.get("username", "Me")
         for mid, direction, content, ts, sd in load_history(peer):
             is_mine = direction == "out"
@@ -789,7 +975,7 @@ class SecureChatWindow(QMainWindow):
                 item = self.msgs_l.takeAt(0)
                 if item.widget(): item.widget().deleteLater()
 
-    # ── NETWORKING ───────────────────────────────────────────────────────────
+    # ── NETWORKING ────────────────────────────────────────────────────────────
 
     def _start_server(self):
         self.server_thread = ServerThread(self.pk, self.port)
@@ -800,8 +986,8 @@ class SecureChatWindow(QMainWindow):
             lambda n: self.status_lbl.setText(f"✗ {n} left"))
         self.server_thread.start()
         import socket
-        try: ip = socket.gethostbyname(socket.gethostname())
-        except Exception: ip = "localhost"
+        try:    ip = socket.gethostbyname(socket.gethostname())
+        except: ip = "localhost"
         self.status_lbl.setText(f"Listening on\n{ip}:{self.port}")
 
     def _start_client(self):
@@ -809,7 +995,7 @@ class SecureChatWindow(QMainWindow):
         self.client_thread = ClientThread(self.pk, self.host, self.port, uname)
         self.client_thread.msg_received.connect(self._on_client_msg)
         self.client_thread.connected.connect(
-            lambda _: self.status_lbl.setText("🔒 Connected & encrypted"))
+            lambda _: self.status_lbl.setText("Connected & encrypted"))
         self.client_thread.disconnected.connect(
             lambda: self.status_lbl.setText("Disconnected"))
         self.client_thread.connection_failed.connect(
@@ -830,11 +1016,19 @@ def main():
     parser = argparse.ArgumentParser(description="SecureChat")
     parser.add_argument("--server", action="store_true")
     parser.add_argument("--client", action="store_true")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--host",   default="127.0.0.1")
+    parser.add_argument("--port",   type=int, default=DEFAULT_PORT)
+    parser.add_argument("--theme",  default=None,
+                        help=f"Preset theme: {', '.join(THEMES.keys())}")
     args = parser.parse_args()
+
     app = QApplication(sys.argv)
-    pk  = load_or_create_keypair()
+    app.setApplicationName("SecureChat")
+    pk = load_or_create_keypair()
+
+    # Apply CLI theme if given
+    if args.theme and args.theme in THEMES:
+        t = load_theme(); t.update(THEMES[args.theme]); save_theme(t)
 
     if args.server:
         mode = "server"
