@@ -1,6 +1,6 @@
 # 🔒 SecureChat
 
-A portable, peer-to-peer encrypted chat using **libsodium** (PyNaCl). No servers, no accounts, no cloud.
+A portable, peer-to-peer encrypted chat using **libsodium** (PyNaCl). No servers, no accounts, no cloud.Free encrypted chat interface — screen prop for TV & film productions. Inspired by Mr. & Mrs. Smith (2024). Customisable, portable, peer-to-peer
 
 ## Encryption
 - **NaCl Box** — X25519 key exchange + XSalsa20-Poly1305 authenticated encryption
